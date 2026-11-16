@@ -1,28 +1,157 @@
-name: Build APK
-on:
-  push:
-  workflow_dispatch:
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Arrange project
-        run: |
-          mkdir -p app/src/main/java/com/videograb/app app/src/main/assets/www
-          mv MainActivity.kt app/src/main/java/com/videograb/app/
-          mv AndroidManifest.xml app/src/main/
-          mv index.html app/src/main/assets/www/
-          mv app-build.gradle app/build.gradle
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.7
-      - run: gradle assembleDebug --no-daemon -Pandroid.useAndroidX=true
-      - uses: actions/upload-artifact@v4
-        with:
-          name: VideoGrab-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VideoGrab</title>
+<style>
+:root{--bg:#000;--fg:#fff;--mid:#8c8c8c;--line:#262626;--card:#0c0c0c;--c2:#161616}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--bg)}
+body{color:var(--fg);font-family:Tahoma,"Noto Sans Arabic",Arial,sans-serif;line-height:1.6}
+.app{max-width:640px;margin:0 auto;padding:20px 16px 40px}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.logo{width:46px;height:46px;border-radius:14px;background:var(--fg);display:grid;place-items:center}
+h1{font-size:1.6rem;font-weight:800;line-height:1.2}
+.top p{color:var(--mid);font-size:.88rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px}
+input{width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:14px;font:inherit;font-size:1rem;margin-bottom:10px}
+input:focus,button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+button{font:inherit;cursor:pointer;border-radius:12px;border:1px solid var(--fg);padding:13px 14px;background:transparent;color:var(--fg);font-weight:600}
+.primary{background:var(--fg);color:var(--bg)}.ghost{border-color:var(--line)}
+button:disabled{opacity:.45}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.msg{min-height:1.3em;margin-top:10px;font-size:.9rem;color:var(--mid);white-space:pre-line}
+.msg.err{color:var(--fg);border-right:3px solid var(--fg);padding-right:10px}
+#player{width:100%;max-height:400px;background:#111;border-radius:12px;border:1px solid var(--line);margin-bottom:12px}
+.badge{display:inline-block;font-size:.75rem;font-weight:700;background:var(--fg);color:var(--bg);border-radius:99px;padding:2px 12px;margin-bottom:6px}
+h2{font-size:1.02rem;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+h3{font-size:.92rem;margin:16px 0 8px}
+.muted{color:var(--mid);font-size:.85rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+.opt{border-color:var(--line);background:var(--c2)}.opt:active{background:var(--fg);color:var(--bg)}
+.prog{height:6px;background:var(--line);border-radius:3px;margin-top:16px;overflow:hidden}
+.prog div{height:100%;width:0;background:var(--fg);transition:width .2s}
+.prog.wait div{width:40%;animation:sl 1.1s infinite ease-in-out}
+@keyframes sl{0%{margin-right:-40%}100%{margin-right:100%}}
+.clip{display:flex;align-items:center;gap:8px;background:var(--fg);color:var(--bg);border-radius:14px;padding:8px 8px 8px 12px;margin-bottom:12px;font-size:.85rem}
+.clip span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clip button{background:var(--bg);color:var(--fg);border:0;padding:7px 12px;border-radius:9px}
+.foot{text-align:center;color:var(--mid);font-size:.8rem;margin-top:8px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <div class="logo"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#000" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg></div>
+    <div><h1>VideoGrab</h1><p>حمّل من أي تطبيق بالرابط</p></div>
+  </div>
+
+  <div id="clip" class="clip" hidden><span id="cliptxt" dir="ltr"></span><button id="clipuse" type="button">لصق وتحليل</button></div>
+
+  <div class="card">
+    <input id="url" type="url" inputmode="url" placeholder="الصق رابط الفيديو هنا" autocomplete="off" dir="ltr">
+    <div class="two">
+      <button id="paste" class="ghost" type="button">لصق</button>
+      <button id="fetch" class="primary" type="button">تحليل</button>
+    </div>
+    <p id="msg" class="msg" role="status"></p>
+  </div>
+
+  <div id="result" class="card" hidden>
+    <video id="player" controls playsinline preload="metadata" hidden></video>
+    <span id="badge" class="badge"></span>
+    <h2 id="title"></h2>
+    <p id="sub" class="muted"></p>
+    <h3>الفيديو</h3><div id="videos" class="grid"></div>
+    <h3>الصوت فقط</h3><div class="grid"><button class="opt" data-kind="audio">MP3</button></div>
+    <div id="prog" class="prog" hidden><div id="bar"></div></div>
+  </div>
+  <p class="foot">حمّل فقط المحتوى الذي تملكه أو يسمح لك بتحميله.</p>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const A = window.Android;
+  let current = "", title = "";
+  const say = (t, err) => { $("msg").textContent = t || ""; $("msg").className = "msg" + (err ? " err" : ""); };
+  const fmt = (s) => { if (!s) return ""; const m = Math.floor(s / 60), x = Math.floor(s % 60); return m + ":" + String(x).padStart(2, "0"); };
+  const label = (h) => h >= 2160 ? "4K" : h >= 1440 ? "2K" : h + "p";
+  const isUrl = (t) => /^https?:\/\/\S+$/i.test((t || "").trim());
+
+  const pending = {}; let seq = 0;
+  window.__res = (id, s) => { const p = pending[id]; if (p) { delete pending[id]; p.resolve(JSON.parse(s)); } };
+  window.__prog = (id, s) => { const p = pending[id]; if (p && p.onprog) p.onprog(parseFloat(s)); };
+  const call = (method, args, onprog) => new Promise((resolve) => {
+    const id = "r" + (++seq); pending[id] = { resolve, onprog }; A[method](id, ...args);
+  });
+
+  if (!A) say("افتح هذه الصفحة من داخل التطبيق.", true);
+
+  function peek() {
+    try {
+      const t = (A.paste() || "").trim();
+      if (isUrl(t) && t !== $("url").value.trim()) { $("cliptxt").textContent = t; $("clip").dataset.u = t; $("clip").hidden = false; }
+    } catch {}
+  }
+  if (A) { peek(); addEventListener("focus", peek); }
+  $("clipuse").onclick = () => { $("url").value = $("clip").dataset.u; $("clip").hidden = true; analyze(); };
+  $("paste").onclick = () => { try { $("url").value = A.paste().trim(); } catch { say("تعذر قراءة الحافظة.", true); } };
+  $("url").addEventListener("keydown", (e) => { if (e.key === "Enter") analyze(); });
+  $("fetch").onclick = analyze;
+
+  const player = $("player");
+  player.addEventListener("error", () => {
+    if (!player.getAttribute("src")) return;
+    player.removeAttribute("src"); player.load();
+  });
+
+  async function analyze() {
+    const url = $("url").value.trim();
+    if (!A) return;
+    if (!isUrl(url)) return say("الصق رابطاً صحيحاً يبدأ بـ http أو https.", true);
+    $("fetch").disabled = true; $("result").hidden = true;
+    say("جاري تحليل الرابط... (أول مرة قد تستغرق وقتاً أطول)");
+    try {
+      const d = await call("info", [url]);
+      if (d.error) throw new Error("تعذر قراءة الرابط:\n" + d.error);
+      current = url; title = d.title;
+      player.pause(); player.removeAttribute("src"); player.poster = d.thumb || "";
+      if (d.preview) player.src = d.preview;
+      player.hidden = !(d.preview || d.thumb); player.load();
+      $("badge").textContent = d.site || "فيديو";
+      $("title").textContent = d.title;
+      $("sub").textContent = [d.uploader, fmt(d.duration)].filter(Boolean).join(" | ");
+      const box = $("videos"); box.innerHTML = "";
+      (d.heights.length ? d.heights : [0]).forEach((h) => {
+        const b = document.createElement("button");
+        b.className = "opt"; b.dataset.kind = "video"; b.dataset.h = h || "";
+        b.textContent = h ? "MP4 " + label(h) : "MP4 أفضل جودة";
+        box.appendChild(b);
+      });
+      $("prog").hidden = true; $("result").hidden = false; say("");
+    } catch (e) { say(e.message, true); }
+    $("fetch").disabled = false;
+  }
+
+  $("result").addEventListener("click", (e) => { const b = e.target.closest(".opt"); if (b) save(b); });
+
+  async function save(btn) {
+    const all = document.querySelectorAll(".opt"), prog = $("prog"), bar = $("bar");
+    all.forEach((x) => (x.disabled = true));
+    prog.hidden = false; prog.className = "prog wait"; bar.style.width = "";
+    say("جاري التحميل، قد يستغرق دقيقة...");
+    try {
+      const r = await call("download", [current, btn.dataset.kind, btn.dataset.h || "", title], (p) => {
+        if (p >= 0) { prog.className = "prog"; bar.style.width = p + "%"; say("جاري التحميل " + Math.round(p) + "%"); }
+      });
+      if (r.error) throw new Error("فشل التحميل:\n" + r.error);
+      bar.style.width = "100%"; say("تم الحفظ في: " + r.where + "\n" + r.name);
+    } catch (e) { prog.hidden = true; say(e.message, true); }
+    all.forEach((x) => (x.disabled = false));
+  }
+})();
+</script>
+</body>
+</html>
