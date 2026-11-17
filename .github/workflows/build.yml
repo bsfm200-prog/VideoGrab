@@ -9,11 +9,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Arrange project
         run: |
-          mkdir -p app/src/main/java/com/videograb/app app/src/main/assets/www
+          mkdir -p app/src/main/java/com/videograb/app app/src/main/assets/www app/src/main/res/drawable
           mv MainActivity.kt app/src/main/java/com/videograb/app/
           mv AndroidManifest.xml app/src/main/
           mv index.html app/src/main/assets/www/
           mv app-build.gradle app/build.gradle
+          IMG=$(find . -maxdepth 1 \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) | head -n1)
+          ext=$(echo "${IMG##*.}" | tr 'A-Z' 'a-z')
+          [ "$ext" = jpeg ] && ext=jpg
+          cp "$IMG" app/src/main/res/drawable/ic_launcher.$ext
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
