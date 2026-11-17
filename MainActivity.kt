@@ -3,6 +3,7 @@ package com.videograb.app
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -19,10 +20,14 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.provider.MediaStore
+import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.Toast
 import com.yausername.aria2c.Aria2c
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
@@ -73,6 +78,50 @@ class DownloadService : Service() {
         val n = Notif.progress(this, intent?.getStringExtra("t") ?: "", -1)
         startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         return START_NOT_STICKY
+    }
+}
+
+class LoginActivity : Activity() {
+    @SuppressLint("SetJavaScriptEnabled")
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.statusBarColor = Color.BLACK
+        window.navigationBarColor = Color.BLACK
+        val root = LinearLayout(this)
+        root.orientation = LinearLayout.VERTICAL
+        root.setBackgroundColor(Color.BLACK)
+        val w = WebView(this)
+        w.settings.javaScriptEnabled = true
+        w.settings.domStorageEnabled = true
+        w.settings.userAgentString = w.settings.userAgentString.replace("; wv", "")
+        w.webViewClient = WebViewClient()
+        root.addView(w, LinearLayout.LayoutParams(-1, 0, 1f))
+        val b = Button(this)
+        b.text = "تم تسجيل الدخول - حفظ"
+        b.setOnClickListener { saveCookies() }
+        root.addView(b, LinearLayout.LayoutParams(-1, -2))
+        setContentView(root)
+        w.loadUrl("https://www.instagram.com/accounts/login/")
+    }
+
+    private fun saveCookies() {
+        val raw = CookieManager.getInstance().getCookie("https://www.instagram.com") ?: ""
+        if (!raw.contains("sessionid=")) {
+            Toast.makeText(this, "سجّل الدخول أولاً ثم اضغط حفظ", Toast.LENGTH_LONG).show()
+            return
+        }
+        CookieManager.getInstance().flush()
+        val exp = System.currentTimeMillis() / 1000 + 31536000
+        val sb = StringBuilder("# Netscape HTTP Cookie File\n")
+        for (part in raw.split(";")) {
+            val kv = part.trim()
+            val i = kv.indexOf('=')
+            if (i <= 0) continue
+            sb.append(".instagram.com\tTRUE\t/\tTRUE\t$exp\t${kv.substring(0, i)}\t${kv.substring(i + 1)}\n")
+        }
+        File(filesDir, "cookies.txt").writeText(sb.toString())
+        Toast.makeText(this, "تم الحفظ. ارجع وأعد تحليل الرابط", Toast.LENGTH_LONG).show()
+        finish()
     }
 }
 
@@ -162,6 +211,26 @@ class MainActivity : Activity() {
 
     private fun JSONObject.s(k: String): String = if (isNull(k)) "" else optString(k, "")
 
+    private fun withCookies(req: YoutubeDLRequest, url: String) {
+        val f = File(filesDir, "cookies.txt")
+        if (f.exists() && url.contains("instagram.com")) {
+            req.addOption("--cookies", f.absolutePath)
+        }
+    }
+
+    private fun askIgLogin() {
+        runOnUiThread {
+            AlertDialog.Builder(this)
+                .setTitle("انستغرام")
+                .setMessage("هذا المحتوى يحتاج تسجيل دخول. هل تريد تسجيل الدخول الآن؟\n\nنصيحة: استخدم حساباً ثانوياً.")
+                .setPositiveButton("تسجيل الدخول") { _, _ ->
+                    startActivity(Intent(this, LoginActivity::class.java))
+                }
+                .setNegativeButton("إلغاء", null)
+                .show()
+        }
+    }
+
     inner class Bridge {
         @JavascriptInterface
         fun paste(): String {
@@ -192,6 +261,7 @@ class MainActivity : Activity() {
                     req.addOption("--no-playlist")
                     req.addOption("--no-warnings")
                     req.addOption("--skip-download")
+                    withCookies(req, url)
                     val out = YoutubeDL.getInstance().execute(req).out
                     val d = JSONObject(out.substring(out.indexOf('{')))
                     val fs = d.optJSONArray("formats") ?: JSONArray()
@@ -225,6 +295,12 @@ class MainActivity : Activity() {
                         .put("preview", preview)
                     push("__res", id, r.toString())
                 } catch (e: Throwable) {
+                    val msg = e.message ?: ""
+                    if (url.contains("instagram.com") &&
+                        (msg.contains("login", true) || msg.contains("cookies", true))
+                    ) {
+                        askIgLogin()
+                    }
                     fail(id, e)
                 }
             }
@@ -247,6 +323,7 @@ class MainActivity : Activity() {
                     req.addOption("--no-playlist")
                     req.addOption("--no-mtime")
                     req.addOption("-N", "8")
+                    withCookies(req, url)
                     if (aria2Ok) {
                         req.addOption("--downloader", "libaria2c.so")
                         req.addOption("--external-downloader-args", "aria2c:-x 16 -s 16 -k 1M")
