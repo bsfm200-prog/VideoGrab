@@ -1,17 +1,29 @@
 package com.videograb.app
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
 import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import android.provider.MediaStore
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
+import android.webkit.WebViewClient
+import com.yausername.aria2c.Aria2c
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
@@ -23,10 +35,54 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 
+object Notif {
+    const val CH = "dl"
+
+    fun channel(c: Context) {
+        val nm = c.getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(NotificationChannel(CH, "Downloads", NotificationManager.IMPORTANCE_LOW))
+    }
+
+    fun progress(c: Context, title: String, p: Int): Notification {
+        val b = Notification.Builder(c, CH)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle(if (title.isEmpty()) "VideoGrab" else title)
+            .setContentText(if (p >= 0) "$p%" else "...")
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+        b.setProgress(100, if (p < 0) 0 else p, p < 0)
+        return b.build()
+    }
+
+    fun done(c: Context, text: String) {
+        val n = Notification.Builder(c, CH)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("VideoGrab")
+            .setContentText(text)
+            .setAutoCancel(true)
+            .build()
+        c.getSystemService(NotificationManager::class.java).notify(2, n)
+    }
+}
+
+class DownloadService : Service() {
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Notif.channel(this)
+        val n = Notif.progress(this, intent?.getStringExtra("t") ?: "", -1)
+        startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        return START_NOT_STICKY
+    }
+}
+
 class MainActivity : Activity() {
     private lateinit var web: WebView
     private val pool = Executors.newCachedThreadPool()
     private lateinit var initJob: Future<*>
+    @Volatile private var aria2Ok = false
+    private var pageReady = false
+    private var pendingShare: String? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -39,16 +95,54 @@ class MainActivity : Activity() {
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
         web.webChromeClient = WebChromeClient()
+        web.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                pageReady = true
+                pendingShare?.let { sendShare(it); pendingShare = null }
+            }
+        }
         web.addJavascriptInterface(Bridge(), "Android")
         web.loadUrl("file:///android_asset/www/index.html")
         initJob = pool.submit {
             YoutubeDL.getInstance().init(application)
             FFmpeg.getInstance().init(application)
+            try {
+                Aria2c.getInstance().init(application)
+                aria2Ok = true
+            } catch (e: Throwable) {
+                aria2Ok = false
+            }
         }
+        extractShare(intent)
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        extractShare(intent)
     }
 
     override fun onBackPressed() {
         if (web.canGoBack()) web.goBack() else super.onBackPressed()
+    }
+
+    private fun extractShare(i: Intent?) {
+        val it = i ?: return
+        if (it.action != Intent.ACTION_SEND) return
+        val t = it.getStringExtra(Intent.EXTRA_TEXT) ?: return
+        val m = Regex("https?://\\S+").find(t) ?: return
+        if (pageReady) sendShare(m.value) else pendingShare = m.value
+    }
+
+    private fun sendShare(u: String) {
+        runOnUiThread {
+            web.evaluateJavascript("window.__share&&window.__share(${JSONObject.quote(u)})", null)
+        }
     }
 
     private fun push(fn: String, id: String, payload: String) {
@@ -73,6 +167,19 @@ class MainActivity : Activity() {
         fun paste(): String {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             return cm.primaryClip?.getItemAt(0)?.coerceToText(this@MainActivity)?.toString() ?: ""
+        }
+
+        @JavascriptInterface
+        fun open(uri: String, mime: String): Boolean {
+            return try {
+                val i = Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(Uri.parse(uri), mime)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(i)
+                true
+            } catch (e: Throwable) {
+                false
+            }
         }
 
         @JavascriptInterface
@@ -125,6 +232,12 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun download(id: String, url: String, kind: String, height: String, title: String) {
+            try {
+                startForegroundService(
+                    Intent(this@MainActivity, DownloadService::class.java).putExtra("t", title)
+                )
+            } catch (e: Throwable) {
+            }
             pool.execute {
                 try {
                     initJob.get()
@@ -133,6 +246,11 @@ class MainActivity : Activity() {
                     val req = YoutubeDLRequest(url)
                     req.addOption("--no-playlist")
                     req.addOption("--no-mtime")
+                    req.addOption("-N", "8")
+                    if (aria2Ok) {
+                        req.addOption("--downloader", "libaria2c.so")
+                        req.addOption("--external-downloader-args", "aria2c:-x 16 -s 16 -k 1M")
+                    }
                     req.addOption("-o", dir.absolutePath + "/vg.%(ext)s")
                     if (kind == "audio") {
                         req.addOption("-f", "bestaudio/best")
@@ -147,8 +265,15 @@ class MainActivity : Activity() {
                         req.addOption("-f", fmt)
                         req.addOption("--merge-output-format", "mp4")
                     }
+                    val nm = getSystemService(NotificationManager::class.java)
+                    var last = -2
                     YoutubeDL.getInstance().execute(req, id) { p, _, _ ->
                         push("__prog", id, p.toString())
+                        val pi = p.toInt()
+                        if (pi != last) {
+                            last = pi
+                            nm.notify(1, Notif.progress(this@MainActivity, title, pi))
+                        }
                     }
                     val f = dir.listFiles()
                         ?.filter { it.isFile && !it.name.endsWith(".part") && !it.name.endsWith(".ytdl") }
@@ -185,9 +310,16 @@ class MainActivity : Activity() {
                     val uri = contentResolver.insert(table, cv) ?: throw RuntimeException("تعذر حفظ الملف")
                     contentResolver.openOutputStream(uri)!!.use { o -> f.inputStream().use { it.copyTo(o) } }
                     dir.deleteRecursively()
-                    push("__res", id, JSONObject().put("name", name).put("where", where).toString())
+                    Notif.done(this@MainActivity, name)
+                    push(
+                        "__res", id,
+                        JSONObject().put("name", name).put("where", where)
+                            .put("uri", uri.toString()).put("mime", mime).toString()
+                    )
                 } catch (e: Throwable) {
                     fail(id, e)
+                } finally {
+                    stopService(Intent(this@MainActivity, DownloadService::class.java))
                 }
             }
         }
