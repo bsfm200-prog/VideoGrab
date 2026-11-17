@@ -28,7 +28,6 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.Toast
-import com.yausername.aria2c.Aria2c
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
@@ -129,7 +128,6 @@ class MainActivity : Activity() {
     private lateinit var web: WebView
     private val pool = Executors.newCachedThreadPool()
     private lateinit var initJob: Future<*>
-    @Volatile private var aria2Ok = false
     private var pageReady = false
     private var pendingShare: String? = null
 
@@ -155,11 +153,10 @@ class MainActivity : Activity() {
         initJob = pool.submit {
             YoutubeDL.getInstance().init(application)
             FFmpeg.getInstance().init(application)
-            try {
-                Aria2c.getInstance().init(application)
-                aria2Ok = true
-            } catch (e: Throwable) {
-                aria2Ok = false
+            val sp = getSharedPreferences("vg", Context.MODE_PRIVATE)
+            val now = System.currentTimeMillis()
+            if (now - sp.getLong("upd", 0L) > 86400000L) {
+                if (updateYtDlp()) sp.edit().putLong("upd", now).apply()
             }
         }
         extractShare(intent)
@@ -178,6 +175,32 @@ class MainActivity : Activity() {
 
     override fun onBackPressed() {
         if (web.canGoBack()) web.goBack() else super.onBackPressed()
+    }
+
+    private fun updateYtDlp(): Boolean {
+        return try {
+            val yd = YoutubeDL.getInstance()
+            val m = yd.javaClass.methods.firstOrNull {
+                it.name == "updateYoutubeDL" && it.parameterTypes.size == 2
+            } ?: return false
+            val ct = m.parameterTypes[1]
+            var ch: Any? = null
+            if (ct.isEnum) {
+                ch = ct.enumConstants?.firstOrNull { it.toString().trimStart('_') == "STABLE" }
+            }
+            if (ch == null) {
+                ch = try { ct.getField("STABLE").get(null) } catch (e: Throwable) { null }
+            }
+            if (ch == null) {
+                val nested = ct.declaredClasses.firstOrNull { it.simpleName.trimStart('_') == "STABLE" }
+                ch = nested?.let { try { it.getField("INSTANCE").get(null) } catch (e: Throwable) { null } }
+            }
+            if (ch == null) return false
+            m.invoke(yd, application, ch)
+            true
+        } catch (e: Throwable) {
+            false
+        }
     }
 
     private fun extractShare(i: Intent?) {
@@ -204,8 +227,10 @@ class MainActivity : Activity() {
 
     private fun fail(id: String, e: Throwable) {
         val root = if (e is ExecutionException && e.cause != null) e.cause!! else e
-        var m = root.message ?: root.toString()
-        if (m.length > 300) m = m.substring(0, 300)
+        val full = root.message ?: root.toString()
+        val lines = full.lines().filter { it.isNotBlank() && !it.trim().startsWith("WARNING") }
+        var m = if (lines.isEmpty()) full else lines.joinToString("\n")
+        if (m.length > 400) m = m.substring(m.length - 400)
         push("__res", id, JSONObject().put("error", m).toString())
     }
 
@@ -324,10 +349,6 @@ class MainActivity : Activity() {
                     req.addOption("--no-mtime")
                     req.addOption("-N", "8")
                     withCookies(req, url)
-                    if (aria2Ok) {
-                        req.addOption("--downloader", "libaria2c.so")
-                        req.addOption("--external-downloader-args", "aria2c:-x 16 -s 16 -k 1M")
-                    }
                     req.addOption("-o", dir.absolutePath + "/vg.%(ext)s")
                     if (kind == "audio") {
                         req.addOption("-f", "bestaudio/best")
@@ -370,6 +391,7 @@ class MainActivity : Activity() {
                     val cv = ContentValues()
                     cv.put(MediaStore.MediaColumns.DISPLAY_NAME, name)
                     cv.put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                    cv.put(MediaStore.MediaColumns.IS_PENDING, 1)
                     val where: String
                     val table: Uri
                     when {
@@ -386,6 +408,9 @@ class MainActivity : Activity() {
                     cv.put(MediaStore.MediaColumns.RELATIVE_PATH, where)
                     val uri = contentResolver.insert(table, cv) ?: throw RuntimeException("تعذر حفظ الملف")
                     contentResolver.openOutputStream(uri)!!.use { o -> f.inputStream().use { it.copyTo(o) } }
+                    val ready = ContentValues()
+                    ready.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                    contentResolver.update(uri, ready, null, null)
                     dir.deleteRecursively()
                     Notif.done(this@MainActivity, name)
                     push(
