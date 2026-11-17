@@ -9,7 +9,7 @@
 *{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
 html,body{background:var(--bg)}
 body{color:var(--fg);font-family:Tahoma,"Noto Sans Arabic",Arial,sans-serif;line-height:1.6}
-.app{max-width:640px;margin:0 auto;padding:20px 16px 40px}
+.app{max-width:640px;margin:0 auto;padding:20px 16px 100px}
 .top{display:flex;align-items:center;gap:12px;margin-bottom:18px}
 .logo{width:46px;height:46px;border-radius:14px;background:var(--fg);display:grid;place-items:center}
 h1{font-size:1.6rem;font-weight:800;line-height:1.2}
@@ -26,7 +26,7 @@ button:disabled{opacity:.45}
 #player{width:100%;max-height:400px;background:#111;border-radius:12px;border:1px solid var(--line);margin-bottom:12px}
 .badge{display:inline-block;font-size:.75rem;font-weight:700;background:var(--fg);color:var(--bg);border-radius:99px;padding:2px 12px;margin-bottom:6px}
 h2{font-size:1.02rem;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-h3{font-size:.92rem;margin:16px 0 8px}
+h3{font-size:.92rem;margin:16px 0 8px}h3.flat{margin:0}
 .muted{color:var(--mid);font-size:.85rem}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
 .opt{border-color:var(--line);background:var(--c2)}.opt:active{background:var(--fg);color:var(--bg)}
@@ -37,7 +37,16 @@ h3{font-size:.92rem;margin:16px 0 8px}
 .clip{display:flex;align-items:center;gap:8px;background:var(--fg);color:var(--bg);border-radius:14px;padding:8px 8px 8px 12px;margin-bottom:12px;font-size:.85rem}
 .clip span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .clip button{background:var(--bg);color:var(--fg);border:0;padding:7px 12px;border-radius:9px}
+.row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.mini{padding:5px 12px;font-size:.8rem;border-color:var(--line)}
+.h{display:flex;align-items:center;gap:8px;padding:11px 0;border-top:1px solid var(--line)}
+.h div{flex:1;min-width:0}
+.h b{display:block;font-size:.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.h small{color:var(--mid)}
 .foot{text-align:center;color:var(--mid);font-size:.8rem;margin-top:8px}
+.nav{position:fixed;inset:auto 0 0 0;display:grid;grid-template-columns:1fr 1fr;background:rgba(0,0,0,.94);border-top:1px solid var(--line);padding:6px 8px 10px;max-width:640px;margin:0 auto}
+.nav button{border:0;color:var(--mid);padding:12px 4px}
+.nav button.on{color:var(--fg);box-shadow:inset 0 -2px 0 var(--fg)}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -48,41 +57,72 @@ h3{font-size:.92rem;margin:16px 0 8px}
     <div><h1>VideoGrab</h1><p>حمّل من أي تطبيق بالرابط</p></div>
   </div>
 
-  <div id="clip" class="clip" hidden><span id="cliptxt" dir="ltr"></span><button id="clipuse" type="button">لصق وتحليل</button></div>
-
-  <div class="card">
-    <input id="url" type="url" inputmode="url" placeholder="الصق رابط الفيديو هنا" autocomplete="off" dir="ltr">
-    <div class="two">
-      <button id="paste" class="ghost" type="button">لصق</button>
-      <button id="fetch" class="primary" type="button">تحليل</button>
+  <div id="tab-home">
+    <div id="clip" class="clip" hidden><span id="cliptxt" dir="ltr"></span><button id="clipuse" type="button">لصق وتحليل</button></div>
+    <div class="card">
+      <input id="url" type="url" inputmode="url" placeholder="الصق رابط الفيديو هنا" autocomplete="off" dir="ltr">
+      <div class="two">
+        <button id="paste" class="ghost" type="button">لصق</button>
+        <button id="fetch" class="primary" type="button">تحليل</button>
+      </div>
+      <p id="msg" class="msg" role="status"></p>
     </div>
-    <p id="msg" class="msg" role="status"></p>
+    <div id="result" class="card" hidden>
+      <video id="player" controls playsinline preload="metadata" hidden></video>
+      <span id="badge" class="badge"></span>
+      <h2 id="title"></h2>
+      <p id="sub" class="muted"></p>
+      <h3>الفيديو</h3><div id="videos" class="grid"></div>
+      <h3>الصوت فقط</h3><div class="grid"><button class="opt" data-kind="audio">MP3</button></div>
+      <div id="prog" class="prog" hidden><div id="bar"></div></div>
+    </div>
+    <p class="foot">حمّل فقط المحتوى الذي تملكه أو يسمح لك بتحميله.</p>
   </div>
 
-  <div id="result" class="card" hidden>
-    <video id="player" controls playsinline preload="metadata" hidden></video>
-    <span id="badge" class="badge"></span>
-    <h2 id="title"></h2>
-    <p id="sub" class="muted"></p>
-    <h3>الفيديو</h3><div id="videos" class="grid"></div>
-    <h3>الصوت فقط</h3><div class="grid"><button class="opt" data-kind="audio">MP3</button></div>
-    <div id="prog" class="prog" hidden><div id="bar"></div></div>
+  <div id="tab-hist" hidden>
+    <div class="card">
+      <div class="row"><h3 class="flat">سجل التحميلات</h3><button id="clear" class="mini" type="button">مسح الكل</button></div>
+      <p id="hmsg" class="msg"></p>
+      <div id="hist"></div>
+    </div>
   </div>
-  <p class="foot">حمّل فقط المحتوى الذي تملكه أو يسمح لك بتحميله.</p>
 </div>
+
+<nav class="nav">
+  <button id="nav-home" class="on" type="button">تحميل</button>
+  <button id="nav-hist" type="button">السجل</button>
+</nav>
+
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
   const A = window.Android;
   let current = "", title = "";
-  const say = (t, err) => { $("msg").textContent = t || ""; $("msg").className = "msg" + (err ? " err" : ""); };
+  const say = (t, err, el) => { el = el || $("msg"); el.textContent = t || ""; el.className = "msg" + (err ? " err" : ""); };
   const fmt = (s) => { if (!s) return ""; const m = Math.floor(s / 60), x = Math.floor(s % 60); return m + ":" + String(x).padStart(2, "0"); };
   const label = (h) => h >= 2160 ? "4K" : h >= 1440 ? "2K" : h + "p";
   const isUrl = (t) => /^https?:\/\/\S+$/i.test((t || "").trim());
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+  };
+  let hist = store.get("vg_hist", []);
 
+  // ---- تبويبات ----
+  function go(t) {
+    $("tab-home").hidden = t !== "home"; $("tab-hist").hidden = t !== "hist";
+    $("nav-home").className = t === "home" ? "on" : ""; $("nav-hist").className = t === "hist" ? "on" : "";
+    if (t === "hist") drawHist();
+    scrollTo(0, 0);
+  }
+  $("nav-home").onclick = () => go("home");
+  $("nav-hist").onclick = () => go("hist");
+
+  // ---- جسر التطبيق ----
   const pending = {}; let seq = 0;
   window.__res = (id, s) => { const p = pending[id]; if (p) { delete pending[id]; p.resolve(JSON.parse(s)); } };
   window.__prog = (id, s) => { const p = pending[id]; if (p && p.onprog) p.onprog(parseFloat(s)); };
+  window.__share = (u) => { $("url").value = u; go("home"); analyze(); };
   const call = (method, args, onprog) => new Promise((resolve) => {
     const id = "r" + (++seq); pending[id] = { resolve, onprog }; A[method](id, ...args);
   });
@@ -111,7 +151,7 @@ h3{font-size:.92rem;margin:16px 0 8px}
     const url = $("url").value.trim();
     if (!A) return;
     if (!isUrl(url)) return say("الصق رابطاً صحيحاً يبدأ بـ http أو https.", true);
-    $("fetch").disabled = true; $("result").hidden = true;
+    $("fetch").disabled = true; $("result").hidden = true; $("clip").hidden = true;
     say("جاري تحليل الرابط... (أول مرة قد تستغرق وقتاً أطول)");
     try {
       const d = await call("info", [url]);
@@ -141,17 +181,39 @@ h3{font-size:.92rem;margin:16px 0 8px}
     const all = document.querySelectorAll(".opt"), prog = $("prog"), bar = $("bar");
     all.forEach((x) => (x.disabled = true));
     prog.hidden = false; prog.className = "prog wait"; bar.style.width = "";
-    say("جاري التحميل، قد يستغرق دقيقة...");
+    say("جاري التحميل... يمكنك الخروج من التطبيق وسيكمل في الخلفية.");
     try {
       const r = await call("download", [current, btn.dataset.kind, btn.dataset.h || "", title], (p) => {
         if (p >= 0) { prog.className = "prog"; bar.style.width = p + "%"; say("جاري التحميل " + Math.round(p) + "%"); }
       });
       if (r.error) throw new Error("فشل التحميل:\n" + r.error);
       bar.style.width = "100%"; say("تم الحفظ في: " + r.where + "\n" + r.name);
+      hist.unshift({ title, name: r.name, where: r.where, uri: r.uri, mime: r.mime, site: $("badge").textContent, t: Date.now() });
+      hist = hist.slice(0, 50); store.set("vg_hist", hist);
     } catch (e) { prog.hidden = true; say(e.message, true); }
     all.forEach((x) => (x.disabled = false));
   }
+
+  // ---- السجل ----
+  function drawHist() {
+    const box = $("hist"); box.innerHTML = ""; say("", false, $("hmsg"));
+    if (!hist.length) { box.innerHTML = '<p class="muted">لا يوجد سجل بعد.</p>'; return; }
+    hist.forEach((h) => {
+      const row = document.createElement("div"); row.className = "h";
+      const info = document.createElement("div");
+      const b = document.createElement("b"); b.textContent = h.name || h.title;
+      const s = document.createElement("small");
+      s.textContent = [h.site, h.where, new Date(h.t).toLocaleDateString("ar")].filter(Boolean).join(" · ");
+      info.append(b, s);
+      const open = document.createElement("button"); open.className = "mini"; open.textContent = "فتح";
+      open.onclick = () => { let ok = false; try { ok = A.open(h.uri, h.mime); } catch {} if (!ok) say("تعذر فتح الملف (ربما حُذف).", true, $("hmsg")); };
+      const del = document.createElement("button"); del.className = "mini"; del.textContent = "✕";
+      del.onclick = () => { hist = hist.filter((x) => x !== h); store.set("vg_hist", hist); drawHist(); };
+      row.append(info, open, del); box.appendChild(row);
+    });
+  }
+  $("clear").onclick = () => { hist = []; store.set("vg_hist", hist); drawHist(); };
 })();
 </script>
 </body>
-</html>
+  </html>
