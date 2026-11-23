@@ -156,7 +156,7 @@ class MainActivity : Activity() {
             val sp = getSharedPreferences("vg", Context.MODE_PRIVATE)
             val now = System.currentTimeMillis()
             if (now - sp.getLong("upd", 0L) > 86400000L) {
-                if (updateYtDlp()) sp.edit().putLong("upd", now).apply()
+                if (updateYtDlp() != null) sp.edit().putLong("upd", now).apply()
             }
         }
         extractShare(intent)
@@ -177,12 +177,12 @@ class MainActivity : Activity() {
         if (web.canGoBack()) web.goBack() else super.onBackPressed()
     }
 
-    private fun updateYtDlp(): Boolean {
+    private fun updateYtDlp(): String? {
         return try {
             val yd = YoutubeDL.getInstance()
             val m = yd.javaClass.methods.firstOrNull {
                 it.name == "updateYoutubeDL" && it.parameterTypes.size == 2
-            } ?: return false
+            } ?: return null
             val ct = m.parameterTypes[1]
             var ch: Any? = null
             if (ct.isEnum) {
@@ -195,12 +195,18 @@ class MainActivity : Activity() {
                 val nested = ct.declaredClasses.firstOrNull { it.simpleName.trimStart('_') == "STABLE" }
                 ch = nested?.let { try { it.getField("INSTANCE").get(null) } catch (e: Throwable) { null } }
             }
-            if (ch == null) return false
-            m.invoke(yd, application, ch)
-            true
+            if (ch == null) return null
+            val r = m.invoke(yd, application, ch)
+            r?.toString() ?: "DONE"
         } catch (e: Throwable) {
-            false
+            null
         }
+    }
+
+    private fun ytVersion(): String {
+        val r = YoutubeDLRequest(emptyList<String>())
+        r.addOption("--version")
+        return YoutubeDL.getInstance().execute(r).out.trim()
     }
 
     private fun extractShare(i: Intent?) {
@@ -277,6 +283,52 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun share(uri: String, mime: String): Boolean {
+            return try {
+                val i = Intent(Intent.ACTION_SEND)
+                    .setType(mime)
+                    .putExtra(Intent.EXTRA_STREAM, Uri.parse(uri))
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val c = Intent.createChooser(i, "مشاركة").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(c)
+                true
+            } catch (e: Throwable) {
+                false
+            }
+        }
+
+        @JavascriptInterface
+        fun version(id: String) {
+            pool.execute {
+                try {
+                    initJob.get()
+                    push("__res", id, JSONObject().put("version", ytVersion()).toString())
+                } catch (e: Throwable) {
+                    fail(id, e)
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun update(id: String) {
+            pool.execute {
+                try {
+                    initJob.get()
+                    val st = updateYtDlp()
+                    val o = JSONObject().put("status", st ?: "")
+                    try {
+                        o.put("version", ytVersion())
+                    } catch (e: Throwable) {
+                    }
+                    if (st == null) o.put("error", "تعذر التحديث. تأكد من الإنترنت.")
+                    push("__res", id, o.toString())
+                } catch (e: Throwable) {
+                    fail(id, e)
+                }
+            }
+        }
+
+        @JavascriptInterface
         fun info(id: String, url: String) {
             pool.execute {
                 try {
@@ -291,6 +343,9 @@ class MainActivity : Activity() {
                     val d = JSONObject(out.substring(out.indexOf('{')))
                     val fs = d.optJSONArray("formats") ?: JSONArray()
                     val hs = TreeSet<Int>(Comparator.reverseOrder())
+                    val vs = HashMap<Int, Long>()
+                    val ps = HashMap<Int, Long>()
+                    var aMax = 0L
                     var preview = ""
                     var prevH = -1
                     for (i in 0 until fs.length()) {
@@ -301,6 +356,18 @@ class MainActivity : Activity() {
                         val hasV = vc.isNotEmpty() && vc != "none"
                         val hasA = ac.isNotEmpty() && ac != "none"
                         if (h > 0 && hasV) hs.add(h)
+                        val sz = when {
+                            !f.isNull("filesize") -> f.optLong("filesize", 0L)
+                            !f.isNull("filesize_approx") -> f.optLong("filesize_approx", 0L)
+                            else -> 0L
+                        }
+                        if (hasV && !hasA && h > 0) {
+                            vs[h] = maxOf(vs[h] ?: 0L, sz)
+                        } else if (hasV && hasA && h > 0) {
+                            ps[h] = maxOf(ps[h] ?: 0L, sz)
+                        } else if (!hasV && hasA) {
+                            aMax = maxOf(aMax, sz)
+                        }
                         val u = f.s("url")
                         val p = f.s("protocol")
                         if (hasV && hasA && u.startsWith("http") && (p == "https" || p == "http") && h <= 720 && h >= prevH) {
@@ -310,12 +377,20 @@ class MainActivity : Activity() {
                     if (preview.isEmpty() && d.s("url").startsWith("http") && d.s("protocol").startsWith("http")) {
                         preview = d.s("url")
                     }
+                    val sizes = JSONObject()
+                    for (h in hs) {
+                        val v = vs[h] ?: 0L
+                        val total = if (v > 0L) v + aMax else (ps[h] ?: 0L)
+                        if (total > 0L) sizes.put(h.toString(), total)
+                    }
                     val r = JSONObject()
                         .put("title", d.s("title").ifEmpty { "فيديو" })
                         .put("duration", if (d.isNull("duration")) 0 else d.optInt("duration", 0))
                         .put("uploader", d.s("uploader"))
                         .put("site", d.s("extractor_key"))
                         .put("heights", JSONArray(hs.toList()))
+                        .put("sizes", sizes)
+                        .put("audioSize", aMax)
                         .put("thumb", d.s("thumbnail"))
                         .put("preview", preview)
                     push("__res", id, r.toString())
@@ -332,7 +407,7 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun download(id: String, url: String, kind: String, height: String, title: String) {
+        fun download(id: String, url: String, kind: String, height: String, title: String, subs: String) {
             try {
                 startForegroundService(
                     Intent(this@MainActivity, DownloadService::class.java).putExtra("t", title)
@@ -342,6 +417,18 @@ class MainActivity : Activity() {
             pool.execute {
                 try {
                     initJob.get()
+                    val ttl: String = if (title.isNotBlank()) title else {
+                        try {
+                            val tr = YoutubeDLRequest(url)
+                            tr.addOption("--print", "title")
+                            tr.addOption("--skip-download")
+                            tr.addOption("--no-playlist")
+                            withCookies(tr, url)
+                            YoutubeDL.getInstance().execute(tr).out.trim().lines().lastOrNull() ?: ""
+                        } catch (e: Throwable) {
+                            ""
+                        }
+                    }
                     val dir = File(filesDir, "dl")
                     dir.deleteRecursively(); dir.mkdirs()
                     val req = YoutubeDLRequest(url)
@@ -362,6 +449,12 @@ class MainActivity : Activity() {
                             "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
                         req.addOption("-f", fmt)
                         req.addOption("--merge-output-format", "mp4")
+                        if (subs == "1") {
+                            req.addOption("--write-subs")
+                            req.addOption("--write-auto-subs")
+                            req.addOption("--sub-langs", "ar,en")
+                            req.addOption("--embed-subs")
+                        }
                     }
                     val nm = getSystemService(NotificationManager::class.java)
                     var last = -2
@@ -370,7 +463,7 @@ class MainActivity : Activity() {
                         val pi = p.toInt()
                         if (pi != last) {
                             last = pi
-                            nm.notify(1, Notif.progress(this@MainActivity, title, pi))
+                            nm.notify(1, Notif.progress(this@MainActivity, ttl, pi))
                         }
                     }
                     val f = dir.listFiles()
@@ -378,7 +471,7 @@ class MainActivity : Activity() {
                         ?.maxByOrNull { it.length() }
                         ?: throw RuntimeException("لم يتم إنتاج ملف")
                     val ext = f.extension.lowercase()
-                    val base = title.replace(Regex("[\\\\/:*?\"<>|\\r\\n]"), " ").trim().take(80).ifEmpty { "video" }
+                    val base = ttl.replace(Regex("[\\\\/:*?\"<>|\\r\\n]"), " ").trim().take(80).ifEmpty { "video" }
                     val name = "$base.$ext"
                     val mime = when (ext) {
                         "mp3" -> "audio/mpeg"
