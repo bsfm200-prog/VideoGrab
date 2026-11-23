@@ -15,8 +15,10 @@ body{color:var(--fg);font-family:Tahoma,"Noto Sans Arabic",Arial,sans-serif;line
 h1{font-size:1.6rem;font-weight:800;line-height:1.2}
 .top p{color:var(--mid);font-size:.88rem}
 .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px}
-input{width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:14px;font:inherit;font-size:1rem;margin-bottom:10px}
-input:focus,button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+input,textarea,select{width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:14px;font:inherit;font-size:1rem;margin-bottom:10px}
+textarea{min-height:120px;resize:vertical;direction:ltr}
+input[type=checkbox]{width:auto;margin:0 0 0 10px;accent-color:#fff}
+input:focus,textarea:focus,select:focus,button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
 button{font:inherit;cursor:pointer;border-radius:12px;border:1px solid var(--fg);padding:13px 14px;background:transparent;color:var(--fg);font-weight:600}
 .primary{background:var(--fg);color:var(--bg)}.ghost{border-color:var(--line)}
 button:disabled{opacity:.45}
@@ -26,9 +28,9 @@ button:disabled{opacity:.45}
 #player{width:100%;max-height:400px;background:#111;border-radius:12px;border:1px solid var(--line);margin-bottom:12px}
 .badge{display:inline-block;font-size:.75rem;font-weight:700;background:var(--fg);color:var(--bg);border-radius:99px;padding:2px 12px;margin-bottom:6px}
 h2{font-size:1.02rem;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-h3{font-size:.92rem;margin:16px 0 8px}h3.flat{margin:0}
-.muted{color:var(--mid);font-size:.85rem}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+h3{font-size:.92rem;margin:16px 0 8px}h3.flat{margin:0 0 6px}
+.muted{color:var(--mid);font-size:.85rem;margin-bottom:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
 .opt{border-color:var(--line);background:var(--c2)}.opt:active{background:var(--fg);color:var(--bg)}
 .prog{height:6px;background:var(--line);border-radius:3px;margin-top:16px;overflow:hidden}
 .prog div{height:100%;width:0;background:var(--fg);transition:width .2s}
@@ -38,14 +40,15 @@ h3{font-size:.92rem;margin:16px 0 8px}h3.flat{margin:0}
 .clip span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .clip button{background:var(--bg);color:var(--fg);border:0;padding:7px 12px;border-radius:9px}
 .row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-.mini{padding:5px 12px;font-size:.8rem;border-color:var(--line)}
-.h{display:flex;align-items:center;gap:8px;padding:11px 0;border-top:1px solid var(--line)}
+.mini{padding:5px 11px;font-size:.8rem;border-color:var(--line)}
+.h{display:flex;align-items:center;gap:6px;padding:11px 0;border-top:1px solid var(--line)}
 .h div{flex:1;min-width:0}
-.h b{display:block;font-size:.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.h b{display:block;font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .h small{color:var(--mid)}
+.sw{display:flex;align-items:center;font-size:.95rem;margin:4px 0}
 .foot{text-align:center;color:var(--mid);font-size:.8rem;margin-top:8px}
-.nav{position:fixed;inset:auto 0 0 0;display:grid;grid-template-columns:1fr 1fr;background:rgba(0,0,0,.94);border-top:1px solid var(--line);padding:6px 8px 10px;max-width:640px;margin:0 auto}
-.nav button{border:0;color:var(--mid);padding:12px 4px}
+.nav{position:fixed;inset:auto 0 0 0;display:grid;grid-template-columns:repeat(4,1fr);background:rgba(0,0,0,.94);border-top:1px solid var(--line);padding:6px 6px 10px;max-width:640px;margin:0 auto}
+.nav button{border:0;color:var(--mid);padding:12px 2px;font-size:.88rem}
 .nav button.on{color:var(--fg);box-shadow:inset 0 -2px 0 var(--fg)}
 [hidden]{display:none!important}
 </style>
@@ -73,10 +76,32 @@ h3{font-size:.92rem;margin:16px 0 8px}h3.flat{margin:0}
       <h2 id="title"></h2>
       <p id="sub" class="muted"></p>
       <h3>الفيديو</h3><div id="videos" class="grid"></div>
-      <h3>الصوت فقط</h3><div class="grid"><button class="opt" data-kind="audio">MP3</button></div>
+      <h3>الصوت فقط</h3><div class="grid"><button id="audiobtn" class="opt" data-kind="audio">MP3</button></div>
       <div id="prog" class="prog" hidden><div id="bar"></div></div>
     </div>
     <p class="foot">حمّل فقط المحتوى الذي تملكه أو يسمح لك بتحميله.</p>
+  </div>
+
+  <div id="tab-queue" hidden>
+    <div class="card">
+      <h3 class="flat">طابور التحميل</h3>
+      <p class="muted">الصق عدة روابط، كل رابط في سطر، وسيحمّلها واحداً بعد الآخر.</p>
+      <textarea id="qtext" placeholder="https://..." dir="ltr"></textarea>
+      <select id="qq">
+        <option value="">أفضل جودة فيديو</option>
+        <option value="1080">فيديو 1080p</option>
+        <option value="720">فيديو 720p</option>
+        <option value="480">فيديو 480p</option>
+        <option value="360">فيديو 360p</option>
+        <option value="audio">صوت MP3 فقط</option>
+      </select>
+      <div class="two">
+        <button id="qgo" class="primary" type="button">تحميل الكل</button>
+        <button id="qstop" class="ghost" type="button" hidden>إيقاف بعد الحالي</button>
+      </div>
+      <p id="qmsg" class="msg"></p>
+      <div id="qlist"></div>
+    </div>
   </div>
 
   <div id="tab-hist" hidden>
@@ -86,11 +111,27 @@ h3{font-size:.92rem;margin:16px 0 8px}h3.flat{margin:0}
       <div id="hist"></div>
     </div>
   </div>
+
+  <div id="tab-set" hidden>
+    <div class="card">
+      <h3 class="flat">محرك التحميل</h3>
+      <p class="muted">إذا توقف موقع عن العمل، حدّث المحرك أولاً.</p>
+      <p id="ver" class="muted" dir="ltr">...</p>
+      <button id="upd" class="primary" type="button" style="width:100%">تحديث المحرك</button>
+      <p id="umsg" class="msg"></p>
+    </div>
+    <div class="card">
+      <h3 class="flat">خيارات</h3>
+      <label class="sw"><input type="checkbox" id="subs"> تحميل الترجمة (عربي وإنجليزي) مع الفيديو إن وجدت</label>
+    </div>
+  </div>
 </div>
 
 <nav class="nav">
   <button id="nav-home" class="on" type="button">تحميل</button>
+  <button id="nav-queue" type="button">الطابور</button>
   <button id="nav-hist" type="button">السجل</button>
+  <button id="nav-set" type="button">الإعدادات</button>
 </nav>
 
 <script>
@@ -101,22 +142,25 @@ h3{font-size:.92rem;margin:16px 0 8px}h3.flat{margin:0}
   const say = (t, err, el) => { el = el || $("msg"); el.textContent = t || ""; el.className = "msg" + (err ? " err" : ""); };
   const fmt = (s) => { if (!s) return ""; const m = Math.floor(s / 60), x = Math.floor(s % 60); return m + ":" + String(x).padStart(2, "0"); };
   const label = (h) => h >= 2160 ? "4K" : h >= 1440 ? "2K" : h + "p";
+  const mbf = (n) => !n ? "" : " · " + (n >= 1073741824 ? (n / 1073741824).toFixed(1) + "GB" : Math.max(1, Math.round(n / 1048576)) + "MB");
   const isUrl = (t) => /^https?:\/\/\S+$/i.test((t || "").trim());
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
   };
   let hist = store.get("vg_hist", []);
+  let cfg = Object.assign({ subs: false }, store.get("vg_cfg", {}));
+  const addHist = (o) => { hist.unshift(Object.assign({ t: Date.now() }, o)); hist = hist.slice(0, 50); store.set("vg_hist", hist); };
 
   // ---- تبويبات ----
+  const TABS = ["home", "queue", "hist", "set"];
   function go(t) {
-    $("tab-home").hidden = t !== "home"; $("tab-hist").hidden = t !== "hist";
-    $("nav-home").className = t === "home" ? "on" : ""; $("nav-hist").className = t === "hist" ? "on" : "";
+    TABS.forEach((x) => { $("tab-" + x).hidden = x !== t; $("nav-" + x).className = x === t ? "on" : ""; });
     if (t === "hist") drawHist();
+    if (t === "set") loadVersion();
     scrollTo(0, 0);
   }
-  $("nav-home").onclick = () => go("home");
-  $("nav-hist").onclick = () => go("hist");
+  TABS.forEach((x) => { $("nav-" + x).onclick = () => go(x); });
 
   // ---- جسر التطبيق ----
   const pending = {}; let seq = 0;
@@ -163,13 +207,15 @@ h3{font-size:.92rem;margin:16px 0 8px}h3.flat{margin:0}
       $("badge").textContent = d.site || "فيديو";
       $("title").textContent = d.title;
       $("sub").textContent = [d.uploader, fmt(d.duration)].filter(Boolean).join(" | ");
+      const sizes = d.sizes || {};
       const box = $("videos"); box.innerHTML = "";
       (d.heights.length ? d.heights : [0]).forEach((h) => {
         const b = document.createElement("button");
         b.className = "opt"; b.dataset.kind = "video"; b.dataset.h = h || "";
-        b.textContent = h ? "MP4 " + label(h) : "MP4 أفضل جودة";
+        b.textContent = h ? "MP4 " + label(h) + mbf(sizes[String(h)]) : "MP4 أفضل جودة";
         box.appendChild(b);
       });
+      $("audiobtn").textContent = "MP3" + mbf(d.audioSize);
       $("prog").hidden = true; $("result").hidden = false; say("");
     } catch (e) { say(e.message, true); }
     $("fetch").disabled = false;
@@ -178,21 +224,58 @@ h3{font-size:.92rem;margin:16px 0 8px}h3.flat{margin:0}
   $("result").addEventListener("click", (e) => { const b = e.target.closest(".opt"); if (b) save(b); });
 
   async function save(btn) {
-    const all = document.querySelectorAll(".opt"), prog = $("prog"), bar = $("bar");
+    const all = document.querySelectorAll("#result .opt"), prog = $("prog"), bar = $("bar");
     all.forEach((x) => (x.disabled = true));
     prog.hidden = false; prog.className = "prog wait"; bar.style.width = "";
     say("جاري التحميل... يمكنك الخروج من التطبيق وسيكمل في الخلفية.");
     try {
-      const r = await call("download", [current, btn.dataset.kind, btn.dataset.h || "", title], (p) => {
+      const r = await call("download", [current, btn.dataset.kind, btn.dataset.h || "", title, cfg.subs ? "1" : ""], (p) => {
         if (p >= 0) { prog.className = "prog"; bar.style.width = p + "%"; say("جاري التحميل " + Math.round(p) + "%"); }
       });
       if (r.error) throw new Error("فشل التحميل:\n" + r.error);
       bar.style.width = "100%"; say("تم الحفظ في: " + r.where + "\n" + r.name);
-      hist.unshift({ title, name: r.name, where: r.where, uri: r.uri, mime: r.mime, site: $("badge").textContent, t: Date.now() });
-      hist = hist.slice(0, 50); store.set("vg_hist", hist);
+      addHist({ title, name: r.name, where: r.where, uri: r.uri, mime: r.mime, site: $("badge").textContent });
     } catch (e) { prog.hidden = true; say(e.message, true); }
     all.forEach((x) => (x.disabled = false));
   }
+
+  // ---- الطابور ----
+  let qRun = false, qStop = false;
+  $("qgo").onclick = async () => {
+    if (qRun || !A) return;
+    const links = [...new Set(($("qtext").value || "").split(/\s+/).filter(isUrl))];
+    if (!links.length) return say("الصق رابطاً واحداً على الأقل (كل رابط في سطر).", true, $("qmsg"));
+    qRun = true; qStop = false; $("qgo").disabled = true; $("qstop").hidden = false;
+    const box = $("qlist"); box.innerHTML = "";
+    const rows = links.map((u) => {
+      const row = document.createElement("div"); row.className = "h";
+      const info = document.createElement("div");
+      const b = document.createElement("b"); b.textContent = u; b.dir = "ltr";
+      const s = document.createElement("small"); s.textContent = "في الانتظار";
+      info.append(b, s); row.appendChild(info); box.appendChild(row);
+      return { b, s };
+    });
+    const sel = $("qq").value, kind = sel === "audio" ? "audio" : "video", h = /^\d+$/.test(sel) ? sel : "";
+    let ok = 0;
+    for (let i = 0; i < links.length; i++) {
+      if (qStop) { rows[i].s.textContent = "تم الإيقاف"; continue; }
+      say("الرابط " + (i + 1) + " من " + links.length, false, $("qmsg"));
+      rows[i].s.textContent = "جاري التحميل...";
+      try {
+        const r = await call("download", [links[i], kind, h, "", cfg.subs ? "1" : ""], (p) => {
+          if (p >= 0) rows[i].s.textContent = "جاري التحميل " + Math.round(p) + "%";
+        });
+        if (r.error) { rows[i].s.textContent = "فشل: " + r.error.split("\n").pop().slice(0, 120); }
+        else {
+          ok++; rows[i].b.dir = "auto"; rows[i].b.textContent = r.name; rows[i].s.textContent = "تم ✓ " + r.where;
+          addHist({ title: r.name, name: r.name, where: r.where, uri: r.uri, mime: r.mime, site: "" });
+        }
+      } catch { rows[i].s.textContent = "فشل"; }
+    }
+    say("انتهى: نجح " + ok + " من " + links.length, false, $("qmsg"));
+    qRun = false; $("qgo").disabled = false; $("qstop").hidden = true;
+  };
+  $("qstop").onclick = () => { qStop = true; };
 
   // ---- السجل ----
   function drawHist() {
@@ -205,15 +288,36 @@ h3{font-size:.92rem;margin:16px 0 8px}h3.flat{margin:0}
       const s = document.createElement("small");
       s.textContent = [h.site, h.where, new Date(h.t).toLocaleDateString("ar")].filter(Boolean).join(" · ");
       info.append(b, s);
-      const open = document.createElement("button"); open.className = "mini"; open.textContent = "فتح";
-      open.onclick = () => { let ok = false; try { ok = A.open(h.uri, h.mime); } catch {} if (!ok) say("تعذر فتح الملف (ربما حُذف).", true, $("hmsg")); };
-      const del = document.createElement("button"); del.className = "mini"; del.textContent = "✕";
-      del.onclick = () => { hist = hist.filter((x) => x !== h); store.set("vg_hist", hist); drawHist(); };
-      row.append(info, open, del); box.appendChild(row);
+      const mk = (txt, fn) => { const x = document.createElement("button"); x.className = "mini"; x.textContent = txt; x.onclick = fn; return x; };
+      const open = mk("فتح", () => { let ok = false; try { ok = A.open(h.uri, h.mime); } catch {} if (!ok) say("تعذر فتح الملف (ربما حُذف).", true, $("hmsg")); });
+      const share = mk("مشاركة", () => { let ok = false; try { ok = A.share(h.uri, h.mime); } catch {} if (!ok) say("تعذرت المشاركة (ربما حُذف الملف).", true, $("hmsg")); });
+      const del = mk("✕", () => { hist = hist.filter((x) => x !== h); store.set("vg_hist", hist); drawHist(); });
+      row.append(info, open, share, del); box.appendChild(row);
     });
   }
   $("clear").onclick = () => { hist = []; store.set("vg_hist", hist); drawHist(); };
+
+  // ---- الإعدادات ----
+  $("subs").checked = !!cfg.subs;
+  $("subs").onchange = () => { cfg.subs = $("subs").checked; store.set("vg_cfg", cfg); };
+  async function loadVersion() {
+    if (!A) return;
+    $("ver").textContent = "جاري الفحص...";
+    try { const r = await call("version", []); $("ver").textContent = r.error ? "تعذر قراءة النسخة" : "yt-dlp " + r.version; }
+    catch { $("ver").textContent = "تعذر قراءة النسخة"; }
+  }
+  $("upd").onclick = async () => {
+    if (!A) return;
+    $("upd").disabled = true; say("جاري التحديث... قد يستغرق دقيقة.", false, $("umsg"));
+    try {
+      const r = await call("update", []);
+      if (r.error) say(r.error, true, $("umsg"));
+      else say(/UP_TO_DATE/i.test(r.status) ? "المحرك محدّث بالفعل ✓" : "تم التحديث ✓", false, $("umsg"));
+      if (r.version) $("ver").textContent = "yt-dlp " + r.version;
+    } catch (e) { say("تعذر التحديث.", true, $("umsg")); }
+    $("upd").disabled = false;
+  };
 })();
 </script>
 </body>
-  </html>
+</html>
